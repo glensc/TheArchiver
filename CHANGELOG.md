@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ## [Unreleased]
 
 ### Added
+- **Files** — Search field in the standard file browser filters the current folder by file or folder name in list and grid views, with filtered counts and an empty-results state
 - **FlareSolverr** — Core settings action "Test FlareSolverr" and `POST /api/settings/flaresolverr-test` to verify connectivity (optional JSON `baseUrl` overrides the saved URL); `helpers.flaresolverr.testConnection()` and `fetchCookiesForUrl()` for plugins
 - **Docker Compose** — Optional `flaresolverr` service (`docker compose --profile flaresolverr up -d`) on port 8191 for local bypass testing
 

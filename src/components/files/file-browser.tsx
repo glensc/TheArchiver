@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Folder,
   File,
@@ -16,8 +16,11 @@ import {
   Copy,
   List,
   LayoutGrid,
+  Search,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -84,8 +87,17 @@ export function FileBrowser({
     action: "move" | "copy";
   } | null>(null);
   const [batchDeleting, setBatchDeleting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const hasSelection = selectedPaths.size > 0;
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const isSearching = normalizedSearchQuery.length > 0;
+  const filteredFiles = useMemo(() => {
+    if (!normalizedSearchQuery) return files;
+    return files.filter((file) =>
+      file.name.toLowerCase().includes(normalizedSearchQuery)
+    );
+  }, [files, normalizedSearchQuery]);
 
   // Persist view mode to cookie (365 day expiry, same-site)
   useEffect(() => {
@@ -96,7 +108,14 @@ export function FileBrowser({
   useEffect(() => {
     setSelectedPaths(new Set());
     setLastClickedIndex(null);
+    setSearchQuery("");
   }, [currentPath]);
+
+  // Avoid hidden selections while filtering.
+  useEffect(() => {
+    setSelectedPaths(new Set());
+    setLastClickedIndex(null);
+  }, [searchQuery]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -104,20 +123,20 @@ export function FileBrowser({
       if (e.key === "Escape" && hasSelection) {
         setSelectedPaths(new Set());
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === "a" && files.length > 0) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "a" && filteredFiles.length > 0) {
         // Only capture if no input is focused
         if (
           document.activeElement?.tagName !== "INPUT" &&
           document.activeElement?.tagName !== "TEXTAREA"
         ) {
           e.preventDefault();
-          setSelectedPaths(new Set(files.map((f) => f.path)));
+          setSelectedPaths(new Set(filteredFiles.map((f) => f.path)));
         }
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [hasSelection, files]);
+  }, [hasSelection, filteredFiles]);
 
   function toggleSelect(filePath: string, index: number, shiftKey: boolean) {
     setSelectedPaths((prev) => {
@@ -126,7 +145,8 @@ export function FileBrowser({
         const start = Math.min(lastClickedIndex, index);
         const end = Math.max(lastClickedIndex, index);
         for (let i = start; i <= end; i++) {
-          next.add(files[i].path);
+          const file = filteredFiles[i];
+          if (file) next.add(file.path);
         }
       } else {
         if (next.has(filePath)) {
@@ -141,10 +161,10 @@ export function FileBrowser({
   }
 
   function toggleSelectAll() {
-    if (selectedPaths.size === files.length) {
+    if (selectedPaths.size === filteredFiles.length) {
       setSelectedPaths(new Set());
     } else {
-      setSelectedPaths(new Set(files.map((f) => f.path)));
+      setSelectedPaths(new Set(filteredFiles.map((f) => f.path)));
     }
   }
 
@@ -307,6 +327,38 @@ export function FileBrowser({
           <FileBreadcrumb currentPath={currentPath} onNavigate={onNavigate} />
         </div>
 
+        {/* Search bar */}
+        <div className="flex flex-col gap-2 border-b border-border/50 bg-card px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full sm:max-w-sm">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search current folder"
+              aria-label="Search files and folders in the current folder"
+              className="h-8 rounded-md pl-8 pr-8 font-mono text-sm"
+            />
+            {isSearching && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1/2 size-6 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                onClick={() => setSearchQuery("")}
+                aria-label="Clear search"
+              >
+                <X className="size-3.5" />
+              </Button>
+            )}
+          </div>
+          {isSearching && (
+            <p className="text-xs text-muted-foreground">
+              Showing {filteredFiles.length} of {files.length} item
+              {files.length !== 1 ? "s" : ""}
+            </p>
+          )}
+        </div>
+
         {/* Selection toolbar */}
         {hasSelection && (
           <FileSelectionToolbar
@@ -346,9 +398,23 @@ export function FileBrowser({
                 </p>
               </div>
             </div>
+          ) : filteredFiles.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <div className="flex size-12 items-center justify-center rounded-full bg-muted">
+                <Search className="size-5 text-muted-foreground" />
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-medium text-muted-foreground">
+                  No matching files or folders
+                </p>
+                <p className="text-xs text-muted-foreground/60 mt-1">
+                  Clear the search to show all items in this folder
+                </p>
+              </div>
+            </div>
           ) : viewMode === "grid" ? (
             <FileGridView
-              files={files}
+              files={filteredFiles}
               currentPath={currentPath}
               selectedPaths={selectedPaths}
               hasSelection={hasSelection}
@@ -369,10 +435,11 @@ export function FileBrowser({
                     hasSelection ? "opacity-100" : "opacity-0"
                   )}
                 >
-                  {files.length > 0 && (
+                  {filteredFiles.length > 0 && (
                     <Checkbox
                       checked={
-                        selectedPaths.size === files.length && files.length > 0
+                        selectedPaths.size === filteredFiles.length &&
+                        filteredFiles.length > 0
                       }
                       onCheckedChange={toggleSelectAll}
                       className="size-3.5"
@@ -403,7 +470,7 @@ export function FileBrowser({
                 </div>
               )}
 
-              {files.map((file, i) => {
+              {filteredFiles.map((file, i) => {
                 const IconComponent = file.isDirectory
                   ? Folder
                   : FILE_ICONS[getFileIconType(file.name)] || File;
