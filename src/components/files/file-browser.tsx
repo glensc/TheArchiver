@@ -98,6 +98,10 @@ export function FileBrowser({
       file.name.toLowerCase().includes(normalizedSearchQuery)
     );
   }, [files, normalizedSearchQuery]);
+  const visiblePaths = useMemo(
+    () => filteredFiles.map((file) => file.path),
+    [filteredFiles]
+  );
 
   // Persist view mode to cookie (365 day expiry, same-site)
   useEffect(() => {
@@ -116,6 +120,18 @@ export function FileBrowser({
     setSelectedPaths(new Set());
     setLastClickedIndex(null);
   }, [searchQuery]);
+
+  // Keep batch actions and shift-selection scoped to the currently visible list.
+  useEffect(() => {
+    const visiblePathSet = new Set(visiblePaths);
+    setSelectedPaths((prev) => {
+      const next = new Set(
+        Array.from(prev).filter((path) => visiblePathSet.has(path))
+      );
+      return next.size === prev.size ? prev : next;
+    });
+    setLastClickedIndex(null);
+  }, [visiblePaths]);
 
   // Keyboard shortcuts
   useEffect(() => {
