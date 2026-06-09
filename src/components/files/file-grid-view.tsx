@@ -14,6 +14,8 @@ interface FileGridViewProps {
   onRename: (file: FileEntry) => void;
   onMoveCopy: (paths: string[], action: "move" | "copy") => void;
   onDelete: (path: string) => void;
+  onNsfwUpdate: (path: string, isNsfw: boolean) => void;
+  nsfwMode: "off" | "blur" | "show";
 }
 
 export function FileGridView({
@@ -27,6 +29,8 @@ export function FileGridView({
   onRename,
   onMoveCopy,
   onDelete,
+  onNsfwUpdate,
+  nsfwMode,
 }: FileGridViewProps) {
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4 p-4">
@@ -46,6 +50,8 @@ export function FileGridView({
           onRename={onRename}
           onMoveCopy={onMoveCopy}
           onDelete={onDelete}
+          onNsfwUpdate={onNsfwUpdate}
+          nsfwMode={nsfwMode}
         />
       ))}
     </div>

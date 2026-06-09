@@ -11,6 +11,8 @@ import {
 import { FileBreadcrumb } from "@/components/files/file-breadcrumb";
 import type { FileEntry } from "@/lib/types";
 
+type NsfwMode = "off" | "blur" | "show";
+
 function getPathFromUrl(): string {
   if (typeof window === "undefined") return "";
   const params = new URLSearchParams(window.location.search);
@@ -33,6 +35,7 @@ export default function FilesPage() {
   const [userExplicitlySelectedFiles, setUserExplicitlySelectedFiles] = useState(false);
   const [previewFile, setPreviewFile] = useState<FileEntry | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [nsfwMode, setNsfwMode] = useState<NsfwMode>("off");
 
 
   const fetchFiles = useCallback(async (filePath: string) => {
@@ -51,6 +54,25 @@ export default function FilesPage() {
       setFiles([]);
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const fetchNsfwMode = useCallback(async () => {
+    try {
+      const res = await fetch("/api/settings");
+      if (!res.ok) return;
+      const data = await res.json();
+      const coreSettings = data.groups?.core ?? [];
+      const setting = coreSettings.find(
+        (item: { key: string }) => item.key === "core.nsfw_mode"
+      );
+      setNsfwMode(
+        setting?.value === "blur" || setting?.value === "show"
+          ? setting.value
+          : "off"
+      );
+    } catch {
+      setNsfwMode("off");
     }
   }, []);
 
@@ -122,6 +144,7 @@ export default function FilesPage() {
       // After files load, check if this is a post directory (contains Post.nfo)
       // If so, auto-activate plugin view for the detail renderer
     });
+    fetchNsfwMode();
     fetchViewProviders(currentPath).then((providers) => {
       if (providers.length === 0) {
         setActiveProviderId(null);
@@ -141,7 +164,7 @@ export default function FilesPage() {
         }
       }
     });
-  }, [mounted, currentPath, fetchFiles, fetchViewProviders, userExplicitlySelectedFiles]);
+  }, [mounted, currentPath, fetchFiles, fetchNsfwMode, fetchViewProviders, userExplicitlySelectedFiles]);
 
   // Auto-activate plugin view when entering a post directory (has Post.nfo)
   useEffect(() => {
@@ -160,6 +183,7 @@ export default function FilesPage() {
   }, []);
 
   function handleRefresh() {
+    fetchNsfwMode();
     fetchFiles(currentPath);
   }
 
@@ -298,6 +322,7 @@ export default function FilesPage() {
             onNavigate={handleNavigate}
             onRefresh={handleRefresh}
             onFileOpen={handleFileOpen}
+            nsfwMode={nsfwMode}
           />
         </div>
       )}

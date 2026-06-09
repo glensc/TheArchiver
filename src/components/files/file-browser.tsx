@@ -18,6 +18,7 @@ import {
   LayoutGrid,
   Search,
   X,
+  ShieldAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,6 +57,7 @@ interface FileBrowserProps {
   files: FileEntry[];
   currentPath: string;
   loading: boolean;
+  nsfwMode: "off" | "blur" | "show";
   onNavigate: (path: string) => void;
   onRefresh: () => void;
   onFileOpen?: (file: FileEntry) => void;
@@ -65,6 +67,7 @@ export function FileBrowser({
   files,
   currentPath,
   loading,
+  nsfwMode,
   onNavigate,
   onRefresh,
   onFileOpen,
@@ -87,6 +90,7 @@ export function FileBrowser({
     action: "move" | "copy";
   } | null>(null);
   const [batchDeleting, setBatchDeleting] = useState(false);
+  const [batchUpdatingNsfw, setBatchUpdatingNsfw] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   const hasSelection = selectedPaths.size > 0;
@@ -254,6 +258,45 @@ export function FileBrowser({
     }
   }, [selectedPaths, onRefresh]);
 
+  const handleNsfwUpdate = useCallback(
+    async (paths: string[], isNsfw: boolean) => {
+      if (paths.length === 0) return;
+      try {
+        const res = await fetch("/api/files/nsfw", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paths, isNsfw }),
+        });
+        if (res.ok) {
+          toast.success(
+            `${isNsfw ? "Marked" : "Unmarked"} ${paths.length} item${paths.length !== 1 ? "s" : ""} as NSFW`
+          );
+          onRefresh();
+        } else {
+          const data = await res.json();
+          toast.error(data.error || "Failed to update NSFW state");
+        }
+      } catch {
+        toast.error("Failed to update NSFW state");
+      }
+    },
+    [onRefresh]
+  );
+
+  const handleBatchNsfwUpdate = useCallback(
+    async (isNsfw: boolean) => {
+      if (selectedPaths.size === 0) return;
+      setBatchUpdatingNsfw(true);
+      try {
+        await handleNsfwUpdate(Array.from(selectedPaths), isNsfw);
+        setSelectedPaths(new Set());
+      } finally {
+        setBatchUpdatingNsfw(false);
+      }
+    },
+    [handleNsfwUpdate, selectedPaths]
+  );
+
   return (
     <>
       <Card className="overflow-hidden border-border/50">
@@ -393,6 +436,9 @@ export function FileBrowser({
             }
             onDownloadZip={handleDownloadZip}
             onDelete={handleBatchDelete}
+            onMarkNsfw={() => handleBatchNsfwUpdate(true)}
+            onUnmarkNsfw={() => handleBatchNsfwUpdate(false)}
+            updatingNsfw={batchUpdatingNsfw}
             onClear={() => setSelectedPaths(new Set())}
           />
         )}
@@ -440,6 +486,8 @@ export function FileBrowser({
               onRename={(file) => setRenameTarget(file)}
               onMoveCopy={(paths, action) => setMoveCopyAction({ paths, action })}
               onDelete={(path) => handleDelete(path)}
+              onNsfwUpdate={(path, isNsfw) => handleNsfwUpdate([path], isNsfw)}
+              nsfwMode={nsfwMode}
             />
           ) : (
             <div className="divide-y divide-border/50">
@@ -491,12 +539,15 @@ export function FileBrowser({
                   ? Folder
                   : FILE_ICONS[getFileIconType(file.name)] || File;
                 const isSelected = selectedPaths.has(file.path);
+                const shouldBlur = nsfwMode === "blur" && file.isNsfw;
+                const shouldBadge =
+                  file.isNsfw && (nsfwMode === "blur" || nsfwMode === "show");
 
                 return (
                   <div
                     key={file.path}
                     className={cn(
-                      "group flex items-center gap-4 px-5 py-3.5 transition-colors animate-vault-enter cursor-pointer",
+                      "group/nsfw group flex items-center gap-4 px-5 py-3.5 transition-colors animate-vault-enter cursor-pointer",
                       isSelected
                         ? "bg-primary/5"
                         : "hover:bg-muted/30"
@@ -538,7 +589,9 @@ export function FileBrowser({
                         "flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors",
                         file.isDirectory
                           ? "bg-primary/10 text-primary"
-                          : "bg-muted text-muted-foreground"
+                          : "bg-muted text-muted-foreground",
+                        shouldBlur &&
+                          "blur-sm group-hover/nsfw:blur-0 group-focus-within/nsfw:blur-0"
                       )}
                     >
                       <IconComponent className="size-4" />
@@ -546,16 +599,29 @@ export function FileBrowser({
 
                     {/* Name */}
                     <div className="flex-1 min-w-0">
-                      <p
-                        className={cn(
-                          "text-sm truncate",
-                          file.isDirectory
-                            ? "font-medium"
-                            : "text-muted-foreground"
+                      <div className="flex min-w-0 items-center gap-2">
+                        <p
+                          className={cn(
+                            "text-sm truncate",
+                            file.isDirectory
+                              ? "font-medium"
+                              : "text-muted-foreground",
+                            shouldBlur &&
+                              "blur-sm group-hover/nsfw:blur-0 group-focus-within/nsfw:blur-0"
+                          )}
+                        >
+                          {file.name}
+                        </p>
+                        {shouldBadge && (
+                          <Badge
+                            variant="destructive"
+                            className="shrink-0 gap-1 px-1.5 py-0 text-[10px]"
+                          >
+                            <ShieldAlert className="size-3" />
+                            NSFW
+                          </Badge>
                         )}
-                      >
-                        {file.name}
-                      </p>
+                      </div>
                     </div>
 
                     {/* Size */}
@@ -646,6 +712,16 @@ export function FileBrowser({
                           >
                             <Copy className="size-4" />
                             Copy to...
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="gap-2"
+                            onSelect={() =>
+                              handleNsfwUpdate([file.path], !file.isNsfwExplicit)
+                            }
+                          >
+                            <ShieldAlert className="size-4" />
+                            {file.isNsfwExplicit ? "Unmark NSFW" : "Mark NSFW"}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem

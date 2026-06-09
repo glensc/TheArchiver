@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 import { resolveSafePath, getRelativePath, FileError } from "@/lib/files";
+import {
+  NSFW_MODE_SETTING_KEY,
+  getNsfwMetadataRows,
+  getNsfwState,
+  normalizeNsfwMode,
+} from "@/lib/file-metadata";
+import { getSetting } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -104,15 +111,25 @@ function mediaUrl(filePath: string, root: string): string {
 async function findMedia(
   dirPath: string,
   root: string,
-  max: number
+  max: number,
+  shouldHideNsfw: boolean,
+  nsfwRows: ReturnType<typeof getNsfwMetadataRows>
 ): Promise<string[]> {
   try {
     const entries: import("fs").Dirent[] = await fs.readdir(dirPath, { withFileTypes: true });
     const urls: string[] = [];
     for (const entry of entries) {
       if (entry.name.startsWith(".")) continue;
+      const childPath = path.join(dirPath, entry.name);
+      const relativeChildPath = getRelativePath(childPath, root);
+      if (
+        shouldHideNsfw &&
+        getNsfwState(relativeChildPath, nsfwRows).isNsfw
+      ) {
+        continue;
+      }
       if (!entry.isDirectory() && MEDIA_RE.test(entry.name)) {
-        urls.push(mediaUrl(path.join(dirPath, entry.name), root));
+        urls.push(mediaUrl(childPath, root));
         if (urls.length >= max) break;
       }
     }
@@ -126,7 +143,9 @@ async function findMedia(
 async function buildPreview(
   absolute: string,
   root: string,
-  post: PostCardMetadata | null
+  post: PostCardMetadata | null,
+  shouldHideNsfw: boolean,
+  nsfwRows: ReturnType<typeof getNsfwMetadataRows>
 ): Promise<{ preview: FolderPreview; itemCount: number }> {
   let entries: import("fs").Dirent[];
   try {
@@ -135,7 +154,11 @@ async function buildPreview(
     return { preview: { type: "empty" }, itemCount: 0 };
   }
 
-  const visible = entries.filter((e) => !e.name.startsWith("."));
+  const visible = entries.filter((entry) => {
+    if (entry.name.startsWith(".")) return false;
+    const relativeEntryPath = getRelativePath(path.join(absolute, entry.name), root);
+    return !shouldHideNsfw || !getNsfwState(relativeEntryPath, nsfwRows).isNsfw;
+  });
   const dirs = visible.filter((e) => e.isDirectory());
   const files = visible.filter((e) => !e.isDirectory());
   const itemCount = visible.length;
@@ -158,7 +181,9 @@ async function buildPreview(
       const found = await findMedia(
         childPath,
         root,
-        MAX_PREVIEW_IMAGES - collageMedia.length
+        MAX_PREVIEW_IMAGES - collageMedia.length,
+        shouldHideNsfw,
+        nsfwRows
       );
       collageMedia.push(...found);
       if (collageMedia.length >= MAX_PREVIEW_IMAGES) break;
@@ -203,19 +228,42 @@ export async function GET(request: NextRequest) {
   try {
     const relativePath = request.nextUrl.searchParams.get("path") || "";
     const { absolute, root } = resolveSafePath(relativePath);
+    const nsfwMode = normalizeNsfwMode(
+      getSetting<string>(NSFW_MODE_SETTING_KEY)
+    );
+    const shouldHideNsfw = nsfwMode === "off";
+    const nsfwRows = getNsfwMetadataRows();
+    if (shouldHideNsfw && getNsfwState(relativePath, nsfwRows).isNsfw) {
+      return NextResponse.json({
+        preview: { type: "empty" },
+        itemCount: 0,
+      } satisfies FolderCardMetadata);
+    }
 
     // Read Post.nfo if it exists
     let post: PostCardMetadata | null = null;
     const nfoPath = path.join(absolute, "Post.nfo");
     try {
-      const content = await fs.readFile(nfoPath, "utf-8");
-      post = parseNfo(content);
+      const nfoRelativePath = getRelativePath(nfoPath, root);
+      if (
+        !shouldHideNsfw ||
+        !getNsfwState(nfoRelativePath, nsfwRows).isNsfw
+      ) {
+        const content = await fs.readFile(nfoPath, "utf-8");
+        post = parseNfo(content);
+      }
     } catch {
       // No Post.nfo — that's fine
     }
 
     // Build preview
-    const { preview, itemCount } = await buildPreview(absolute, root, post);
+    const { preview, itemCount } = await buildPreview(
+      absolute,
+      root,
+      post,
+      shouldHideNsfw,
+      nsfwRows
+    );
 
     const result: FolderCardMetadata = {
       preview,
