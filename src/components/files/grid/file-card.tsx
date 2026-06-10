@@ -8,9 +8,11 @@ import {
   FolderInput,
   Copy,
   MoreHorizontal,
+  ShieldAlert,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,6 +37,8 @@ interface FileCardProps {
   onRename: (file: FileEntry) => void;
   onMoveCopy: (paths: string[], action: "move" | "copy") => void;
   onDelete: (path: string) => void;
+  onNsfwUpdate: (path: string, isNsfw: boolean) => void;
+  nsfwMode: "off" | "blur" | "show";
 }
 
 export function FileCard({
@@ -47,15 +51,20 @@ export function FileCard({
   onRename,
   onMoveCopy,
   onDelete,
+  onNsfwUpdate,
+  nsfwMode,
 }: FileCardProps) {
   const cardData = useFolderCardData(file.isDirectory ? file.path : "");
   const post = cardData?.post;
   const displayName = post ? post.title : file.name;
+  const shouldBlur = nsfwMode === "blur" && file.isNsfw;
+  const shouldBadge =
+    file.isNsfw && (nsfwMode === "blur" || nsfwMode === "show");
 
   return (
     <div
       className={cn(
-        "group relative rounded-xl border overflow-hidden cursor-pointer transition-all animate-vault-enter",
+        "group/nsfw group relative rounded-xl border overflow-hidden cursor-pointer transition-all animate-vault-enter",
         isSelected
           ? "border-primary ring-2 ring-primary/20 bg-card"
           : "border-border/50 bg-card hover:border-primary/50 hover:shadow-sm"
@@ -65,10 +74,28 @@ export function FileCard({
     >
       {/* Thumbnail */}
       <div className="aspect-[16/10] bg-muted relative overflow-hidden">
-        {file.isDirectory ? (
-          <FolderThumbnail preview={cardData?.preview} />
-        ) : (
-          <FileThumbnail file={file} />
+        <div
+          className={cn(
+            "h-full w-full transition-[filter]",
+            shouldBlur &&
+              "blur-md group-hover/nsfw:blur-0 group-focus-within/nsfw:blur-0"
+          )}
+        >
+          {file.isDirectory ? (
+            <FolderThumbnail preview={cardData?.preview} />
+          ) : (
+            <FileThumbnail file={file} />
+          )}
+        </div>
+
+        {shouldBadge && (
+          <Badge
+            variant="destructive"
+            className="absolute bottom-2 left-2 z-10 gap-1 px-1.5 py-0 text-[10px]"
+          >
+            <ShieldAlert className="size-3" />
+            NSFW
+          </Badge>
         )}
 
         {/* Checkbox overlay */}
@@ -160,6 +187,16 @@ export function FileCard({
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
+                className="gap-2"
+                onSelect={() =>
+                  onNsfwUpdate(file.path, !file.isNsfwExplicit)
+                }
+              >
+                <ShieldAlert className="size-4" />
+                {file.isNsfwExplicit ? "Unmark NSFW" : "Mark NSFW"}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
                 className="gap-2 text-destructive focus:text-destructive focus:bg-destructive/10"
                 onSelect={() => onDelete(file.path)}
               >
@@ -172,7 +209,13 @@ export function FileCard({
       </div>
 
       {/* Body */}
-      <div className="p-3">
+      <div
+        className={cn(
+          "p-3 transition-[filter]",
+          shouldBlur &&
+            "blur-sm group-hover/nsfw:blur-0 group-focus-within/nsfw:blur-0"
+        )}
+      >
         <p
           className={cn(
             "text-sm truncate",

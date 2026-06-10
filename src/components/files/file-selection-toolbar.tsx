@@ -1,7 +1,14 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { FolderInput, Copy, Download, Trash2, X } from "lucide-react";
+import {
+  FolderInput,
+  Copy,
+  Download,
+  Trash2,
+  X,
+  ShieldAlert,
+} from "lucide-react";
 
 interface FileSelectionToolbarProps {
   selectedCount: number;
@@ -9,6 +16,9 @@ interface FileSelectionToolbarProps {
   onCopy: () => void;
   onDownloadZip: () => void;
   onDelete: () => void;
+  onMarkNsfw: () => void;
+  onUnmarkNsfw: () => void;
+  updatingNsfw?: boolean;
   onClear: () => void;
 }
 
@@ -18,6 +28,9 @@ export function FileSelectionToolbar({
   onCopy,
   onDownloadZip,
   onDelete,
+  onMarkNsfw,
+  onUnmarkNsfw,
+  updatingNsfw = false,
   onClear,
 }: FileSelectionToolbarProps) {
   return (
@@ -56,6 +69,26 @@ export function FileSelectionToolbar({
         >
           <Download className="size-3.5" />
           Download Zip
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-9 gap-1.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 sm:h-7"
+          disabled={updatingNsfw}
+          onClick={onMarkNsfw}
+        >
+          <ShieldAlert className="size-3.5" />
+          Mark NSFW
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-9 gap-1.5 text-xs sm:h-7"
+          disabled={updatingNsfw}
+          onClick={onUnmarkNsfw}
+        >
+          <ShieldAlert className="size-3.5" />
+          Unmark NSFW
         </Button>
         <Button
           variant="ghost"

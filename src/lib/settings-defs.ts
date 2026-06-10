@@ -24,6 +24,24 @@ export const CORE_SETTINGS: SettingDefinition[] = [
     sortOrder: 1,
   },
   {
+    key: "core.nsfw_mode",
+    group: "core",
+    type: "select",
+    label: "NSFW Content Visibility",
+    description:
+      "Controls how file browser items marked NSFW are handled on this device.",
+    defaultValue: "off",
+    validation: {
+      required: true,
+      options: [
+        { label: "Off - hide NSFW items", value: "off" },
+        { label: "Blur - obscure until hover", value: "blur" },
+        { label: "Show - display with badge", value: "show" },
+      ],
+    },
+    sortOrder: 2,
+  },
+  {
     key: "core.flaresolverr_url",
     group: "core",
     type: "string",
@@ -32,7 +50,7 @@ export const CORE_SETTINGS: SettingDefinition[] = [
       "URL of a FlareSolverr instance for bypassing Cloudflare (e.g., http://flaresolverr:8191). Leave empty to disable.",
     defaultValue: "",
     envVar: "FLARESOLVERR_URL",
-    sortOrder: 2,
+    sortOrder: 3,
   },
   {
     key: "core.flaresolverr_test",
@@ -42,7 +60,7 @@ export const CORE_SETTINGS: SettingDefinition[] = [
     description:
       "Sends a lightweight API call to FlareSolverr. Other settings are saved first; the URL field value above is used for the test.",
     defaultValue: false,
-    sortOrder: 3,
+    sortOrder: 4,
   },
   {
     key: "notifications.ntfy_url",

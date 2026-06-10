@@ -6,6 +6,8 @@ export interface FileEntry {
   isDirectory: boolean;
   size: number;
   modifiedAt: string;
+  isNsfw?: boolean;
+  isNsfwExplicit?: boolean;
 }
 
 export interface SettingData {

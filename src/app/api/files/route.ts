@@ -7,6 +7,17 @@ import {
   getRelativePath,
   FileError,
 } from "@/lib/files";
+import {
+  NSFW_MODE_SETTING_KEY,
+  copyNsfwMetadata,
+  deleteNsfwMetadata,
+  getNsfwMetadataRows,
+  getNsfwState,
+  moveNsfwMetadata,
+  normalizeNsfwMode,
+  setExplicitNsfw,
+} from "@/lib/file-metadata";
+import { getSetting } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +27,8 @@ export interface FileEntry {
   isDirectory: boolean;
   size: number;
   modifiedAt: string;
+  isNsfw: boolean;
+  isNsfwExplicit: boolean;
 }
 
 export async function GET(request: NextRequest) {
@@ -33,6 +46,10 @@ export async function GET(request: NextRequest) {
 
     const entries = await fs.readdir(absolute, { withFileTypes: true });
     const results: FileEntry[] = [];
+    const nsfwMode = normalizeNsfwMode(
+      getSetting<string>(NSFW_MODE_SETTING_KEY)
+    );
+    const nsfwRows = getNsfwMetadataRows();
 
     for (const entry of entries) {
       // Skip hidden files
@@ -41,12 +58,18 @@ export async function GET(request: NextRequest) {
       const entryPath = path.join(absolute, entry.name);
       try {
         const entryStat = await fs.stat(entryPath);
+        const relativeEntryPath = getRelativePath(entryPath, root);
+        const nsfwState = getNsfwState(relativeEntryPath, nsfwRows);
+        if (nsfwMode === "off" && nsfwState.isNsfw) continue;
+
         results.push({
           name: entry.name,
-          path: getRelativePath(entryPath, root),
+          path: relativeEntryPath,
           isDirectory: entry.isDirectory(),
           size: entry.isDirectory() ? 0 : entryStat.size,
           modifiedAt: entryStat.mtime.toISOString(),
+          isNsfw: nsfwState.isNsfw,
+          isNsfwExplicit: nsfwState.isNsfwExplicit,
         });
       } catch {
         // Skip entries we can't stat (broken symlinks, permission issues)
@@ -137,17 +160,23 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const { absolute: sourceAbsolute, root } = resolveSafePath(sourcePath);
+    const { absolute: sourceAbsolute } = resolveSafePath(sourcePath);
     const parentDir = path.dirname(sourcePath);
-    const newRelativePath = parentDir ? `${parentDir}/${newName}` : newName;
-    const { absolute: targetAbsolute } = resolveSafeNewPath(newRelativePath);
+    const normalizedParentDir = parentDir === "." ? "" : parentDir;
+    const nextRelativePath = normalizedParentDir
+      ? `${normalizedParentDir}/${newName}`
+      : newName;
+    const { absolute: targetAbsolute } = resolveSafeNewPath(nextRelativePath);
 
+    const sourceNsfwState = getNsfwState(sourcePath);
     await fs.rename(sourceAbsolute, targetAbsolute);
+    moveNsfwMetadata(sourcePath, nextRelativePath);
+    preserveNsfwStateAfterMoveOrCopy(sourceNsfwState.isNsfw, nextRelativePath);
 
     return NextResponse.json({
       success: true,
       oldPath: sourcePath,
-      newPath: newRelativePath,
+      newPath: nextRelativePath,
     });
   } catch (err) {
     if (err instanceof FileError) {
@@ -202,9 +231,13 @@ export async function PUT(request: NextRequest) {
 
     const completed: string[] = [];
     for (const sourcePath of paths) {
-      const { absolute: sourceAbsolute, root } = resolveSafePath(sourcePath);
+      const { absolute: sourceAbsolute } = resolveSafePath(sourcePath);
       const basename = path.basename(sourceAbsolute);
       const targetAbsolute = path.join(destAbsolute, basename);
+      const targetRelativePath = destination
+        ? `${destination}/${basename}`
+        : basename;
+      const sourceNsfwState = getNsfwState(sourcePath);
 
       // Containment check — prevent moving folder into itself or descendant
       const realSource = await fs.realpath(sourceAbsolute);
@@ -239,9 +272,15 @@ export async function PUT(request: NextRequest) {
 
       if (action === "move") {
         await fs.rename(sourceAbsolute, targetAbsolute);
+        moveNsfwMetadata(sourcePath, targetRelativePath);
       } else {
         await fs.cp(sourceAbsolute, targetAbsolute, { recursive: true });
+        copyNsfwMetadata(sourcePath, targetRelativePath);
       }
+      preserveNsfwStateAfterMoveOrCopy(
+        sourceNsfwState.isNsfw,
+        targetRelativePath
+      );
       completed.push(sourcePath);
     }
 
@@ -269,6 +308,14 @@ export async function PUT(request: NextRequest) {
   }
 }
 
+function preserveNsfwStateAfterMoveOrCopy(
+  sourceWasNsfw: boolean,
+  targetPath: string
+) {
+  if (!sourceWasNsfw || getNsfwState(targetPath).isNsfw) return;
+  setExplicitNsfw([targetPath], true);
+}
+
 export async function DELETE(request: NextRequest) {
   try {
     const body = await request.json();
@@ -293,6 +340,7 @@ export async function DELETE(request: NextRequest) {
       }
 
       await fs.rm(absolute, { recursive: true, force: true });
+      deleteNsfwMetadata(relativePath);
       deleted.push(relativePath);
     }
 

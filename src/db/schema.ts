@@ -17,6 +17,17 @@ export const settings = sqliteTable("settings", {
     .$defaultFn(() => new Date()),
 });
 
+export const fileMetadata = sqliteTable("file_metadata", {
+  path: text("path").primaryKey(),
+  isNsfw: integer("is_nsfw", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 export const installedPlugins = sqliteTable("installed_plugins", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
