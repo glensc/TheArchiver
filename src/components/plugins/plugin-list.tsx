@@ -10,6 +10,7 @@ import {
   User,
   RefreshCw,
   Upload,
+  ArrowUpCircle,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
@@ -26,6 +27,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { PluginImportDialog } from "./plugin-import-dialog";
 import { CommunityBrowser } from "./community-browser";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface PluginInfo {
   id: string;
@@ -36,6 +38,9 @@ interface PluginInfo {
   urlPatterns: string[];
   enabled: boolean;
   hasSettings: boolean;
+  communityVersion?: string | null;
+  communityDownloadUrl?: string | null;
+  updateAvailable?: boolean;
 }
 
 interface PluginListProps {
@@ -127,6 +132,34 @@ export function PluginList({ plugins, onRefresh }: PluginListProps) {
     } finally {
       setUpdatingId(null);
       if (updateFileRef.current) updateFileRef.current.value = "";
+    }
+  }
+
+  async function handleCommunityUpdate(plugin: PluginInfo) {
+    if (!plugin.communityDownloadUrl) return;
+
+    setUpdatingId(plugin.id);
+    try {
+      const res = await fetch("/api/plugins/community/install", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ downloadUrl: plugin.communityDownloadUrl }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update plugin");
+      }
+
+      toast.success(`${plugin.name} updated to v${plugin.communityVersion}`);
+      onRefresh?.();
+    } catch (err) {
+      console.error("Failed to update community plugin:", err);
+      toast.error(
+        err instanceof Error ? err.message : `Failed to update ${plugin.name}`
+      );
+    } finally {
+      setUpdatingId(null);
     }
   }
 
@@ -259,6 +292,15 @@ export function PluginList({ plugins, onRefresh }: PluginListProps) {
                         Off
                       </Badge>
                     )}
+                    {plugin.updateAvailable && plugin.communityVersion && (
+                      <Badge
+                        variant="secondary"
+                        className="text-[10px] font-heading uppercase tracking-wider text-amber-600 dark:text-amber-400"
+                      >
+                        <ArrowUpCircle className="size-2.5 mr-0.5" />
+                        Update to v{plugin.communityVersion}
+                      </Badge>
+                    )}
                   </div>
                   {plugin.description && (
                     <p className="text-xs text-muted-foreground mt-0.5">
@@ -310,6 +352,22 @@ export function PluginList({ plugins, onRefresh }: PluginListProps) {
 
                 {/* Actions */}
                 <div className="flex items-center gap-1.5 shrink-0">
+                  {plugin.updateAvailable && plugin.communityDownloadUrl && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1.5 font-heading text-xs uppercase tracking-wider text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
+                      disabled={updatingId !== null}
+                      onClick={() => handleCommunityUpdate(plugin)}
+                    >
+                      {updatingId === plugin.id ? (
+                        <RefreshCw className="size-3 animate-spin" />
+                      ) : (
+                        <ArrowUpCircle className="size-3" />
+                      )}
+                      Update
+                    </Button>
+                  )}
                   <Switch
                     checked={plugin.enabled}
                     disabled={togglingId === plugin.id}

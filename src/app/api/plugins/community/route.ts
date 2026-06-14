@@ -1,41 +1,15 @@
 import { NextResponse } from "next/server";
 import { getDb, schema } from "@/db";
 import { slugify } from "@/plugins/helpers/string";
-
-const COMMUNITY_REPO_URL =
-  process.env.COMMUNITY_PLUGINS_URL ||
-  "https://raw.githubusercontent.com/pauljoda/TheArchiver-CommunityPlugins/main/plugins.json";
-
-interface CommunityPlugin {
-  id: string;
-  name: string;
-  version: string;
-  description: string;
-  author: string;
-  downloadFile: string;
-  path: string;
-}
-
-interface CommunityManifest {
-  version: number;
-  baseUrl: string;
-  plugins: CommunityPlugin[];
-}
+import {
+  fetchCommunityManifest,
+  type CommunityManifest,
+  type CommunityPlugin,
+} from "@/lib/community-plugins";
 
 export async function GET() {
   try {
-    const res = await fetch(COMMUNITY_REPO_URL, {
-      cache: "no-store",
-    });
-
-    if (!res.ok) {
-      return NextResponse.json(
-        { error: "Failed to fetch community plugins" },
-        { status: 502 }
-      );
-    }
-
-    const manifest: CommunityManifest = await res.json();
+    const manifest: CommunityManifest = await fetchCommunityManifest();
 
     // Get installed plugins to determine status
     const db = getDb();

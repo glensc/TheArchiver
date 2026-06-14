@@ -10,6 +10,7 @@ import {
   installPlugin,
   PluginInstallError,
 } from "@/lib/plugin-install";
+import { fetchCommunityManifest } from "@/lib/community-plugins";
 
 export async function POST(request: NextRequest) {
   let tmpDir: string | null = null;
@@ -26,19 +27,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate download URL against the trusted community registry base URL
-    const communityUrl =
-      process.env.COMMUNITY_PLUGINS_URL ||
-      "https://raw.githubusercontent.com/pauljoda/TheArchiver-CommunityPlugins/main/plugins.json";
     try {
-      const manifestRes = await fetch(communityUrl, { cache: "no-store" });
-      if (manifestRes.ok) {
-        const manifest = await manifestRes.json();
-        if (manifest.baseUrl && !downloadUrl.startsWith(manifest.baseUrl)) {
-          return NextResponse.json(
-            { error: "downloadUrl must originate from the community registry" },
-            { status: 400 }
-          );
-        }
+      const manifest = await fetchCommunityManifest();
+      if (manifest.baseUrl && !downloadUrl.startsWith(manifest.baseUrl)) {
+        return NextResponse.json(
+          { error: "downloadUrl must originate from the community registry" },
+          { status: 400 }
+        );
       }
     } catch {
       return NextResponse.json(
